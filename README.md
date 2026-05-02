@@ -4,6 +4,13 @@
 
 `orbit` keeps each project as a single bare repo cached globally and a local **hub** directory where every branch you work on lives as a sibling worktree. No more `git clone` per branch, no more "which checkout was that again?".
 
+## How it works
+
+- **Bare repo** in `~/.local/state/orbit/repos/<project>` is the single source of truth for refs and objects. Every worktree shares it.
+- **Hub** is a directory with `.orbit.yaml` at the root.
+- **Hub config** (`.orbit.yaml`) records the project name, the original remote URL, and creation timestamp.
+- Worktrees are created with `git worktree add` against the bare repo, always inside the hub.
+
 ```text
 ~/.local/state/orbit/repos/<project>     ← bare repo (cache)
 
@@ -14,9 +21,6 @@
   fix-bug/                               ← worktree
 ```
 
-## Status
-
-MVP complete. Five commands shipped: `clone`, `new`, `rm`, `list`, `migrate`. See [Roadmap](#roadmap) for what's next.
 
 ## Install
 
@@ -101,25 +105,6 @@ orbit migrate                             # adopts it into the orbit layout
 
 The original directory is renamed to `<dir>.orbit-backup-<timestamp>` (kept for safety — you can `rm -rf` it after verifying), a new bare is created in `~/.local/state/orbit/repos/<project>`, and every local branch is recreated as a worktree in the parent. Requires a clean tree, no stash, and all local branches pushed to `origin`.
 
-## Roadmap
-
-Next features beyond the MVP, in rough priority order.
-
-- **`migrate --adopt`** — handle clones that already have sibling worktrees (the manual hub-of-worktrees pattern).
-- **`orbit rm --force`** — remove a dirty worktree (today fails if there are uncommitted changes).
-- **`orbit doctor`** — sanity-check bare/hub/worktree consistency, report drift.
-- **`orbit prune`** — clean up dead worktrees and stale merged branches.
-- **`orbit rename`** — rename a project and/or its hub.
-
-## How it works
-
-- **Bare repo** in `~/.local/state/orbit/repos/<project>` is the single source of truth for refs and objects. Every worktree shares it.
-- **Hub** is just a directory with `.orbit.yaml` at the root. It is not a Git repository — only the worktrees inside it are.
-- **Hub config** (`.orbit.yaml`) records the project name, the original remote URL, and a creation timestamp. That's it.
-- Worktrees are created with `git worktree add` against the bare repo, always inside the hub.
-
-The bare repo is **not** a `--mirror` clone: that would overwrite local branches on every fetch. We do `git init --bare` plus a manual `fetch '+refs/heads/*:refs/remotes/origin/*'`, which keeps `refs/heads/*` (your worktree branches) separate from `refs/remotes/origin/*`.
-
 ## Development
 
 ```bash
@@ -129,3 +114,24 @@ make smoke   # end-to-end test against a public repo (uses an isolated XDG_STATE
 make fmt
 make vet
 ```
+
+## Roadmap
+
+Next features beyond the MVP, in rough priority order.
+
+- [ ] **`migrate --adopt`** — handle clones that already have sibling worktrees (the manual hub-of-worktrees pattern).
+- [ ] **`orbit rm --force`** — remove a dirty worktree (today fails if there are uncommitted changes).
+- [ ] **`orbit doctor`** — sanity-check bare/hub/worktree consistency, report drift.
+- [ ] **`orbit prune`** — clean up dead worktrees and stale merged branches.
+- [ ] **`orbit rename`** — rename a project and/or its hub.
+
+## License
+
+No license declared yet. Treat as personal-use only until one is added.
+
+## Feedback
+
+Issues and PRs are welcome.
+
+
+

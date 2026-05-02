@@ -81,5 +81,52 @@ if "$ORBIT" new escape ../escape >/dev/null 2>&1; then
 fi
 pass "rejects path outside hub"
 
+echo "=== rm by basename (keeps branch) ==="
+cd "$WORK/$PROJECT"
+"$ORBIT" rm another-branch >/dev/null 2>&1 || fail "orbit rm by basename failed"
+[[ ! -e "$WORK/$PROJECT/another-branch" ]] || fail "rm did not remove dir"
+git --git-dir="$XDG_STATE_HOME/orbit/repos/$PROJECT" show-ref --verify --quiet "refs/heads/another/branch" \
+  || fail "branch should still exist"
+pass "rm removes worktree, keeps branch"
+
+echo "=== rm with --delete-branch ==="
+"$ORBIT" rm feature-orbit-smoke --delete-branch >/dev/null 2>&1 || fail "orbit rm --delete-branch failed"
+[[ ! -e "$WORK/$PROJECT/feature-orbit-smoke" ]] || fail "rm did not remove dir"
+if git --git-dir="$XDG_STATE_HOME/orbit/repos/$PROJECT" show-ref --verify --quiet "refs/heads/feature/orbit-smoke"; then
+  fail "branch should be deleted"
+fi
+pass "rm --delete-branch removes worktree and branch"
+
+echo "=== rm by absolute path ==="
+"$ORBIT" rm "$WORK/$PROJECT/master" >/dev/null 2>&1 || fail "orbit rm by abs path failed"
+[[ ! -e "$WORK/$PROJECT/master" ]] || fail "rm did not remove dir"
+pass "rm by absolute path"
+
+echo "=== negative: rm of non-existent ==="
+if "$ORBIT" rm nope >/dev/null 2>&1; then
+  fail "expected failure on non-existent worktree"
+fi
+pass "fails clearly on unknown target"
+
+echo "=== negative: rm outside a hub ==="
+cd /tmp
+if "$ORBIT" rm something >/dev/null 2>&1; then
+  fail "expected failure outside hub"
+fi
+pass "fails clearly outside hub"
+
+echo "=== negative: --delete-branch on bare HEAD branch ==="
+cd "$WORK/$PROJECT"
+"$ORBIT" new master >/dev/null 2>&1 || fail "could not re-create master worktree"
+# Force bare HEAD to point to master so the preflight has something to refuse.
+git --git-dir="$XDG_STATE_HOME/orbit/repos/$PROJECT" symbolic-ref HEAD refs/heads/master
+if "$ORBIT" rm master --delete-branch >/dev/null 2>&1; then
+  fail "expected failure deleting bare HEAD branch"
+fi
+[[ -e "$WORK/$PROJECT/master" ]] || fail "preflight should have aborted before removing worktree"
+pass "refuses to delete bare HEAD branch (preflight aborts before removal)"
+# cleanup the master worktree we just re-created (no --delete-branch this time)
+"$ORBIT" rm master >/dev/null 2>&1 || fail "cleanup of master failed"
+
 echo
 echo "ALL SMOKE TESTS PASSED"

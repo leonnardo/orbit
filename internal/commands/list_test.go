@@ -34,18 +34,21 @@ func TestFormatList(t *testing.T) {
 		{Path: "/Users/me/workspace/repo-test/fix-bug", Branch: "refs/heads/fix-bug"},
 		{Path: "/Users/me/elsewhere/external", Branch: "refs/heads/ext"}, // outside hub: must be skipped
 	}
-	got := formatList("repo-test", "https://github.com/leonnardo/repo-test", hub, entries, home)
+	got := formatList("repo-test", "https://github.com/leonnardo/repo-test", hub, entries, home, "")
 
 	wantHeader := "repo-test  (https://github.com/leonnardo/repo-test)"
 	if !strings.HasPrefix(got, wantHeader+"\n") {
 		t.Errorf("missing header %q in:\n%s", wantHeader, got)
 	}
 
-	// Sorted: feature-login, fix-bug, main; padded to len("feature-login") = 13.
+	// Sorted: feature-login, fix-bug, main.
+	// name column padded to len("feature-login") = 13.
+	// branch column padded to len("feature/login") = 13.
+	// No cwd → every row gets a leading space.
 	wantLines := []string{
-		"  feature-login  ~/workspace/repo-test/feature-login",
-		"  fix-bug        ~/workspace/repo-test/fix-bug",
-		"  main           ~/workspace/repo-test/main",
+		"  feature-login  feature/login  ~/workspace/repo-test/feature-login",
+		"  fix-bug        fix-bug        ~/workspace/repo-test/fix-bug",
+		"  main           main           ~/workspace/repo-test/main",
 	}
 	for _, line := range wantLines {
 		if !strings.Contains(got, line+"\n") {
@@ -67,11 +70,68 @@ func TestFormatList(t *testing.T) {
 	}
 }
 
+func TestFormatList_Detached(t *testing.T) {
+	hub := "/Users/me/workspace/repo-test"
+	entries := []git.WorktreeEntry{
+		{Path: "/Users/me/workspace/repo-test/main", Branch: "refs/heads/main"},
+		{Path: "/Users/me/workspace/repo-test/detached-wt", Detached: true},
+	}
+	got := formatList("repo-test", "", hub, entries, "/Users/me", "")
+
+	// name column padded to len("detached-wt") = 11.
+	// branch column padded to len("(detached)") = 10.
+	wantLines := []string{
+		"  detached-wt  (detached)  ~/workspace/repo-test/detached-wt",
+		"  main         main        ~/workspace/repo-test/main",
+	}
+	for _, line := range wantLines {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("missing line %q in:\n%s", line, got)
+		}
+	}
+}
+
+func TestFormatList_CwdMarker(t *testing.T) {
+	hub := "/Users/me/workspace/repo-test"
+	home := "/Users/me"
+	entries := []git.WorktreeEntry{
+		{Path: "/Users/me/workspace/repo-test/main", Branch: "refs/heads/main"},
+		{Path: "/Users/me/workspace/repo-test/feature-login", Branch: "refs/heads/feature/login"},
+	}
+
+	// cwd inside the "main" worktree → only main is marked with "*".
+	got := formatList("repo-test", "", hub, entries, home, "/Users/me/workspace/repo-test/main/internal/cmd")
+	wantLines := []string{
+		"  feature-login  feature/login  ~/workspace/repo-test/feature-login",
+		"* main           main           ~/workspace/repo-test/main",
+	}
+	for _, line := range wantLines {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("missing line %q in:\n%s", line, got)
+		}
+	}
+	if strings.Contains(got, "* feature-login") {
+		t.Errorf("feature-login should not be marked with *:\n%s", got)
+	}
+
+	// cwd outside any worktree (e.g. hub root) → no row gets "*".
+	got2 := formatList("repo-test", "", hub, entries, home, hub)
+	if strings.Contains(got2, "*") {
+		t.Errorf("no row should be marked when cwd is outside every worktree:\n%s", got2)
+	}
+
+	// Empty cwd → no row gets "*".
+	got3 := formatList("repo-test", "", hub, entries, home, "")
+	if strings.Contains(got3, "*") {
+		t.Errorf("no row should be marked when cwd is empty:\n%s", got3)
+	}
+}
+
 func TestFormatList_Empty(t *testing.T) {
 	hub := "/h"
 	got := formatList("proj", "https://example.com/proj", hub, []git.WorktreeEntry{
 		{Path: "/state/bare", Bare: true},
-	}, "")
+	}, "", "")
 
 	wantHeader := "proj  (https://example.com/proj)\n"
 	if !strings.HasPrefix(got, wantHeader) {
@@ -83,7 +143,7 @@ func TestFormatList_Empty(t *testing.T) {
 }
 
 func TestFormatList_NoRemote(t *testing.T) {
-	got := formatList("proj", "", "/h", nil, "")
+	got := formatList("proj", "", "/h", nil, "", "")
 	if !strings.HasPrefix(got, "proj\n") {
 		t.Errorf("expected bare project header, got:\n%s", got)
 	}

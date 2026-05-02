@@ -46,7 +46,8 @@ func List(args []string) error {
 	}
 
 	home, _ := os.UserHomeDir()
-	fmt.Print(formatList(h.Config.Project, h.Config.Remote, h.Root, entries, home))
+	cwd, _ := os.Getwd()
+	fmt.Print(formatList(h.Config.Project, h.Config.Remote, h.Root, entries, home, cwd))
 	return nil
 }
 
@@ -55,13 +56,17 @@ func List(args []string) error {
 // Only worktrees strictly inside hubRoot are included; the bare entry and any
 // external worktrees of the same bare are skipped. Rows are sorted by name
 // (path relative to hubRoot) for deterministic output.
-func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, home string) string {
+//
+// If cwd is inside one of the listed worktrees, that row is prefixed with "*";
+// all other rows get a leading space. An empty cwd (or a cwd outside every
+// worktree) yields a leading space on every row.
+func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, home, cwd string) string {
 	hubNorm := normalizePath(hubRoot)
 	hubPrefix := hubNorm + string(filepath.Separator)
 
-	type row struct{ name, path string }
+	type row struct{ name, branch, path, absPath string }
 	var rows []row
-	maxName := 0
+	maxName, maxBranch := 0, 0
 	for _, e := range entries {
 		if e.Bare {
 			continue
@@ -74,9 +79,21 @@ func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, ho
 		if err != nil || rel == "" || rel == "." {
 			rel = filepath.Base(eNorm)
 		}
-		rows = append(rows, row{name: rel, path: renderPath(eNorm, home)})
+		branch := e.BranchName()
+		if branch == "" || e.Detached {
+			branch = "(detached)"
+		}
+		rows = append(rows, row{
+			name:    rel,
+			branch:  branch,
+			path:    renderPath(eNorm, home),
+			absPath: eNorm,
+		})
 		if len(rel) > maxName {
 			maxName = len(rel)
+		}
+		if len(branch) > maxBranch {
+			maxBranch = len(branch)
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })
@@ -92,7 +109,11 @@ func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, ho
 		return b.String()
 	}
 	for _, r := range rows {
-		fmt.Fprintf(&b, "  %-*s  %s\n", maxName, r.name, r.path)
+		marker := " "
+		if cwd != "" && isInside(cwd, r.absPath) {
+			marker = "*"
+		}
+		fmt.Fprintf(&b, "%s %-*s  %-*s  %s\n", marker, maxName, r.name, maxBranch, r.branch, r.path)
 	}
 	return b.String()
 }

@@ -33,8 +33,7 @@ func Run(args []string) int {
 	case "rm":
 		return runCmd(commands.Rm, rest)
 	case "list":
-		fmt.Fprintln(os.Stderr, "orbit list: not implemented yet")
-		return 1
+		return runCmd(commands.List, rest)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return 0

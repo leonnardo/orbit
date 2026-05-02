@@ -37,6 +37,13 @@ cd "$WORK"
 [[ ! -e "$WORK/$PROJECT/.git" ]]                || fail "hub should NOT contain .git"
 pass "bare + hub created, no .git in hub"
 
+echo "=== list on empty hub ==="
+cd "$WORK/$PROJECT"
+LIST_OUT="$("$ORBIT" list 2>&1)" || fail "orbit list on empty hub failed"
+echo "$LIST_OUT" | grep -q "^$PROJECT  (" || fail "list header missing project + remote"
+echo "$LIST_OUT" | grep -q "no worktrees yet" || fail "empty hint missing"
+pass "list shows header + empty hint"
+
 echo "=== new (tracking remote branch) ==="
 cd "$WORK/$PROJECT"
 "$ORBIT" new master >/dev/null 2>&1 || fail "orbit new master failed"
@@ -53,6 +60,23 @@ cd "$WORK/$PROJECT/master"
 "$ORBIT" new another/branch >/dev/null 2>&1 || fail "orbit new from subdir failed"
 [[ -e "$WORK/$PROJECT/another-branch/.git" ]] || fail "subdir-detected hub failed"
 pass "hub detection works from worktree subdir"
+
+echo "=== list with multiple worktrees ==="
+cd "$WORK/$PROJECT"
+LIST_OUT="$("$ORBIT" list 2>&1)" || fail "orbit list failed"
+echo "$LIST_OUT" | grep -q "^  another-branch " || fail "another-branch missing from list"
+echo "$LIST_OUT" | grep -q "^  feature-orbit-smoke " || fail "feature-orbit-smoke missing from list"
+echo "$LIST_OUT" | grep -q "^  master " || fail "master missing from list"
+# Lines must be sorted alphabetically
+LIST_NAMES="$(echo "$LIST_OUT" | awk '/^  [^(]/{print $1}')"
+SORTED_NAMES="$(echo "$LIST_NAMES" | sort)"
+[[ "$LIST_NAMES" == "$SORTED_NAMES" ]] || fail "list output is not sorted: $LIST_NAMES"
+pass "list shows all worktrees, sorted"
+
+echo "=== list from a worktree subdir ==="
+cd "$WORK/$PROJECT/master"
+"$ORBIT" list >/dev/null 2>&1 || fail "orbit list from worktree subdir failed"
+pass "list works from inside a worktree"
 
 echo "=== negative: orbit new outside a hub ==="
 cd /tmp
@@ -114,6 +138,13 @@ if "$ORBIT" rm something >/dev/null 2>&1; then
   fail "expected failure outside hub"
 fi
 pass "fails clearly outside hub"
+
+echo "=== negative: list outside a hub ==="
+cd /tmp
+if "$ORBIT" list >/dev/null 2>&1; then
+  fail "expected failure outside hub"
+fi
+pass "list fails clearly outside a hub"
 
 echo "=== negative: --delete-branch on bare HEAD branch ==="
 cd "$WORK/$PROJECT"

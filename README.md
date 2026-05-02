@@ -94,7 +94,3 @@ make smoke   # end-to-end test against a public repo (uses an isolated XDG_STATE
 make fmt
 make vet
 ```
-
-## Spec
-
-Full spec at `~/Documents/SecondBrain/01-projects/orbit/spec.md` (private). Summary lives in `docs/`.

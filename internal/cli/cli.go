@@ -11,10 +11,11 @@ import (
 const usage = `orbit — git worktree hub manager
 
 usage:
-  orbit clone <repo-url-or-path> [project]
-  orbit new   <branch> [path]
-  orbit rm    <path-or-name> [--delete-branch]
+  orbit clone   <repo-url-or-path> [project]
+  orbit new     <branch> [path]
+  orbit rm      <path-or-name> [--delete-branch]
   orbit list
+  orbit migrate [--name <project>]
 `
 
 func Run(args []string) int {
@@ -34,6 +35,8 @@ func Run(args []string) int {
 		return runCmd(commands.Rm, rest)
 	case "list":
 		return runCmd(commands.List, rest)
+	case "migrate":
+		return runCmd(commands.Migrate, rest)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return 0

@@ -159,5 +159,46 @@ pass "refuses to delete bare HEAD branch (preflight aborts before removal)"
 # cleanup the master worktree we just re-created (no --delete-branch this time)
 "$ORBIT" rm master >/dev/null 2>&1 || fail "cleanup of master failed"
 
+echo "=== migrate ==="
+# Use a fresh state dir so we don't collide with the existing $PROJECT bare.
+MIG_STATE="$TMP/mig-state"
+MIG_PARENT="$TMP/mig-work"
+mkdir -p "$MIG_STATE" "$MIG_PARENT"
+git clone "$REPO_URL" "$MIG_PARENT/standalone" >/dev/null 2>&1 || fail "git clone of standalone failed"
+[[ -d "$MIG_PARENT/standalone/.git" ]] || fail "standalone .git should be a directory before migrate"
+
+cd "$MIG_PARENT/standalone"
+XDG_STATE_HOME="$MIG_STATE" "$ORBIT" migrate >/dev/null 2>&1 || fail "orbit migrate failed"
+
+[[ ! -e "$MIG_PARENT/standalone" ]]                       || fail "original dir should be renamed away"
+ls -d "$MIG_PARENT"/standalone.orbit-backup-* >/dev/null 2>&1 || fail "backup dir not found"
+[[ -f "$MIG_PARENT/.orbit.yaml" ]]                        || fail ".orbit.yaml not created in parent"
+[[ -d "$MIG_STATE/orbit/repos/$PROJECT" ]]                || fail "bare not created at fresh state dir"
+[[ -e "$MIG_PARENT/master/.git" ]]                        || fail "master worktree missing"
+[[ -f "$MIG_PARENT/master/.git" ]]                        || fail "master/.git should be a gitlink file, not a dir"
+pass "migrate: bare + hub + master worktree created, original moved to backup"
+
+echo "=== negative: orbit migrate outside a git repo ==="
+NON_GIT="$TMP/non-git"
+mkdir -p "$NON_GIT"
+cd "$NON_GIT"
+if XDG_STATE_HOME="$MIG_STATE" "$ORBIT" migrate >/dev/null 2>&1; then
+  fail "expected failure outside a git repo"
+fi
+pass "migrate fails outside a git repo"
+
+echo "=== negative: orbit migrate from inside an orbit worktree ==="
+cd "$WORK/$PROJECT"
+"$ORBIT" new master >/dev/null 2>&1 || fail "could not create master worktree for migrate negative test"
+cd "$WORK/$PROJECT/master"
+[[ -f "$WORK/$PROJECT/master/.git" ]] || fail "expected .git to be a file (gitlink) inside an orbit worktree"
+if "$ORBIT" migrate >/dev/null 2>&1; then
+  fail "expected failure from inside an orbit worktree"
+fi
+pass "migrate fails when .git is a gitlink file (orbit worktree)"
+# cleanup the master worktree we just re-created
+cd "$WORK/$PROJECT"
+"$ORBIT" rm master >/dev/null 2>&1 || fail "cleanup of master after migrate negative failed"
+
 echo
 echo "ALL SMOKE TESTS PASSED"

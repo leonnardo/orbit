@@ -1,0 +1,19 @@
+# Build artifacts (we install to ~/.local/bin via Makefile, never to the repo)
+/orbit
+/bin/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local scratch
+tmp/
+*.tmp
+*.log
+
+# Go runtime profile output
+*.out

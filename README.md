@@ -16,7 +16,7 @@
 
 ## Status
 
-MVP, phase 1 — `orbit clone` and `orbit new` are working. `orbit rm` and `orbit list` are next.
+MVP complete. Five commands shipped: `clone`, `new`, `rm`, `list`, `migrate`. See [Roadmap](#roadmap) for what's next.
 
 ## Install
 
@@ -69,12 +69,47 @@ orbit new fix/bug worktrees/bug   # custom path inside the hub
 
 You can run `orbit new` from anywhere inside the hub, including from inside an existing worktree — the hub is detected by walking up the tree looking for `.orbit.yaml`.
 
-### Roadmap
+### Remove a worktree
 
 ```bash
-orbit rm <path|name> [--delete-branch]   # phase 2
-orbit list                               # phase 2
+cd ~/workspace/Hello-World
+orbit rm feature-login                    # removes the worktree, keeps the branch
+orbit rm feature-login --delete-branch    # removes the worktree AND deletes the branch (safe delete only)
 ```
+
+Accepts an absolute path, a relative path, or just the worktree's basename.
+
+### List worktrees
+
+```bash
+cd ~/workspace/Hello-World
+orbit list
+# Hello-World  (https://github.com/octocat/Hello-World)
+#   WORKTREE        BRANCH          FOLDER
+# * main            main            ~/workspace/Hello-World/main
+#   feature-login   feature/login   ~/workspace/Hello-World/feature-login
+```
+
+The `*` marks the worktree containing your current directory.
+
+### Migrate an existing standalone clone into a hub
+
+```bash
+cd ~/workspace/some-existing-clone        # a regular `git clone`-d repo
+orbit migrate                             # adopts it into the orbit layout
+```
+
+The original directory is renamed to `<dir>.orbit-backup-<timestamp>` (kept for safety — you can `rm -rf` it after verifying), a new bare is created in `~/.local/state/orbit/repos/<project>`, and every local branch is recreated as a worktree in the parent. Requires a clean tree, no stash, and all local branches pushed to `origin`.
+
+## Roadmap
+
+Next features beyond the MVP, in rough priority order.
+
+- **`migrate --adopt`** — handle clones that already have sibling worktrees (the manual hub-of-worktrees pattern).
+- **`orbit rm --force`** — remove a dirty worktree (today fails if there are uncommitted changes).
+- **`orbit doctor`** — sanity-check bare/hub/worktree consistency, report drift.
+- **`orbit prune`** — clean up dead worktrees and stale merged branches.
+- **`orbit rename`** — rename a project and/or its hub.
 
 ## How it works
 

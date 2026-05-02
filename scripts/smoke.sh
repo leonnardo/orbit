@@ -67,8 +67,8 @@ LIST_OUT="$("$ORBIT" list 2>&1)" || fail "orbit list failed"
 echo "$LIST_OUT" | grep -q "^  another-branch " || fail "another-branch missing from list"
 echo "$LIST_OUT" | grep -q "^  feature-orbit-smoke " || fail "feature-orbit-smoke missing from list"
 echo "$LIST_OUT" | grep -q "^  master " || fail "master missing from list"
-# Lines must be sorted alphabetically
-LIST_NAMES="$(echo "$LIST_OUT" | awk '/^  [^(]/{print $1}')"
+# Lines must be sorted alphabetically (skip the WORKTREE column header line)
+LIST_NAMES="$(echo "$LIST_OUT" | awk '/^  [^(]/{print $1}' | grep -v '^WORKTREE$')"
 SORTED_NAMES="$(echo "$LIST_NAMES" | sort)"
 [[ "$LIST_NAMES" == "$SORTED_NAMES" ]] || fail "list output is not sorted: $LIST_NAMES"
 pass "list shows all worktrees, sorted"

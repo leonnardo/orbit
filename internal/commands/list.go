@@ -98,6 +98,18 @@ func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, ho
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })
 
+	const (
+		hdrName   = "WORKTREE"
+		hdrBranch = "BRANCH"
+		hdrPath   = "FOLDER"
+	)
+	if len(hdrName) > maxName {
+		maxName = len(hdrName)
+	}
+	if len(hdrBranch) > maxBranch {
+		maxBranch = len(hdrBranch)
+	}
+
 	var b strings.Builder
 	if remote != "" {
 		fmt.Fprintf(&b, "%s  (%s)\n", project, remote)
@@ -108,6 +120,7 @@ func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, ho
 		b.WriteString("  (no worktrees yet — create one with `orbit new <branch>`)\n")
 		return b.String()
 	}
+	fmt.Fprintf(&b, "  %-*s  %-*s  %s\n", maxName, hdrName, maxBranch, hdrBranch, hdrPath)
 	for _, r := range rows {
 		marker := " "
 		if cwd != "" && isInside(cwd, r.absPath) {

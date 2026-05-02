@@ -42,13 +42,17 @@ func TestFormatList(t *testing.T) {
 	}
 
 	// Sorted: feature-login, fix-bug, main.
-	// name column padded to len("feature-login") = 13.
-	// branch column padded to len("feature/login") = 13.
+	// name column padded to len("feature-login") = 13 (wider than "WORKTREE").
+	// branch column padded to len("feature/login") = 13 (wider than "BRANCH").
 	// No cwd → every row gets a leading space.
+	wantHeaderRow := "  WORKTREE       BRANCH         FOLDER"
 	wantLines := []string{
 		"  feature-login  feature/login  ~/workspace/repo-test/feature-login",
 		"  fix-bug        fix-bug        ~/workspace/repo-test/fix-bug",
 		"  main           main           ~/workspace/repo-test/main",
+	}
+	if !strings.Contains(got, wantHeaderRow+"\n") {
+		t.Errorf("missing column header %q in:\n%s", wantHeaderRow, got)
 	}
 	for _, line := range wantLines {
 		if !strings.Contains(got, line+"\n") {
@@ -63,10 +67,66 @@ func TestFormatList(t *testing.T) {
 		t.Errorf("bare entry should not appear:\n%s", got)
 	}
 
-	// Verify bytes-exact ordering.
-	wantOrder := wantHeader + "\n" + wantLines[0] + "\n" + wantLines[1] + "\n" + wantLines[2] + "\n"
+	// Verify bytes-exact ordering: project header, column header, then rows.
+	wantOrder := wantHeader + "\n" + wantHeaderRow + "\n" + wantLines[0] + "\n" + wantLines[1] + "\n" + wantLines[2] + "\n"
 	if got != wantOrder {
 		t.Errorf("output mismatch:\nwant:\n%s\ngot:\n%s", wantOrder, got)
+	}
+}
+
+func TestFormatList_HeaderWidensShortColumns(t *testing.T) {
+	// All entry names and branches are shorter than the header strings
+	// "WORKTREE" (8) and "BRANCH" (6). The header must widen the columns
+	// so that data rows align under it (not the other way around).
+	hub := "/Users/me/workspace/repo-test"
+	home := "/Users/me"
+	entries := []git.WorktreeEntry{
+		{Path: "/Users/me/workspace/repo-test/a", Branch: "refs/heads/x"},
+		{Path: "/Users/me/workspace/repo-test/b", Branch: "refs/heads/y"},
+	}
+	got := formatList("repo-test", "", hub, entries, home, "")
+
+	// name column padded to len("WORKTREE") = 8.
+	// branch column padded to len("BRANCH") = 6.
+	wantHeaderRow := "  WORKTREE  BRANCH  FOLDER"
+	wantLines := []string{
+		"  a         x       ~/workspace/repo-test/a",
+		"  b         y       ~/workspace/repo-test/b",
+	}
+	wantOrder := "repo-test\n" + wantHeaderRow + "\n" + wantLines[0] + "\n" + wantLines[1] + "\n"
+	if got != wantOrder {
+		t.Errorf("output mismatch:\nwant:\n%s\ngot:\n%s", wantOrder, got)
+	}
+
+	// Sanity: every data row must start at the same column as the header
+	// row's "WORKTREE" / "BRANCH" / "FOLDER" tokens.
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (project, header, 2 rows), got %d:\n%s", len(lines), got)
+	}
+	header := lines[1]
+	for _, dataLine := range lines[2:] {
+		for _, token := range []string{"WORKTREE", "BRANCH", "FOLDER"} {
+			col := strings.Index(header, token)
+			if col < 0 || col >= len(dataLine) {
+				t.Errorf("header token %q not aligned with data line %q", token, dataLine)
+				continue
+			}
+			if dataLine[col] == ' ' {
+				t.Errorf("data line %q has whitespace under header token %q at column %d", dataLine, token, col)
+			}
+		}
+	}
+}
+
+func TestFormatList_EmptyHasNoHeader(t *testing.T) {
+	// When there are zero worktrees, the column header row must NOT be
+	// printed — only the empty-hub hint.
+	got := formatList("proj", "", "/h", []git.WorktreeEntry{
+		{Path: "/state/bare", Bare: true},
+	}, "", "")
+	if strings.Contains(got, "WORKTREE") || strings.Contains(got, "BRANCH") || strings.Contains(got, "FOLDER") {
+		t.Errorf("empty hub must not print column headers, got:\n%s", got)
 	}
 }
 

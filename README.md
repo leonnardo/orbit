@@ -26,6 +26,23 @@
 
 Requires Go 1.24+ and `git` on `PATH`.
 
+Install the latest published version directly from GitHub:
+
+```bash
+go install github.com/leonnardo/orbit@latest
+```
+
+Make sure Go's install directory is on your `PATH`. If `GOBIN` is set, Go
+installs `orbit` there. Otherwise it installs to `$(go env GOPATH)/bin`.
+
+You can check where Go will install binaries with:
+
+```bash
+go env GOBIN GOPATH
+```
+
+To install from a local checkout instead:
+
 ```bash
 git clone <this-repo> orbit
 cd orbit/main           # if you cloned with orbit; otherwise just cd into the repo
@@ -88,13 +105,25 @@ Accepts an absolute path, a relative path, or just the worktree's basename.
 ```bash
 cd ~/workspace/Hello-World
 orbit list
-# Hello-World  (https://github.com/octocat/Hello-World)
-#   WORKTREE        BRANCH          FOLDER
-# * main            main            ~/workspace/Hello-World/main
-#   feature-login   feature/login   ~/workspace/Hello-World/feature-login
+#   BRANCH         STATUS  PATH           COMMIT   MESSAGE
+# * main           ✓       main           a1b2c3d  Initial commit
+#   feature/login  ●↑      feature-login  d4e5f6a  Add login flow
 ```
 
-The `*` marks the worktree containing your current directory.
+The `*` marks the worktree containing your current directory. It only appears
+when `orbit list` is run from inside a worktree; running it from the hub root
+prints the same table without a current-worktree marker.
+
+Status signals:
+
+- `✓` clean
+- `●` local changes
+- `?` untracked files
+- `!` conflicts
+- `↑` ahead of upstream
+- `↓` behind upstream
+- `◆` detached HEAD
+- `🔒` locked worktree
 
 ### Migrate an existing standalone clone into a hub
 
@@ -132,6 +161,4 @@ No license declared yet. Treat as personal-use only until one is added.
 ## Feedback
 
 Issues and PRs are welcome.
-
-
 

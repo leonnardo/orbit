@@ -146,7 +146,7 @@ make vet
 
 ## Roadmap
 
-Next features beyond the MVP, in rough priority order.
+Next planned features, in rough priority order:
 
 - [ ] **`migrate --adopt`** — handle clones that already have sibling worktrees (the manual hub-of-worktrees pattern).
 - [ ] **`orbit rm --force`** — remove a dirty worktree (today fails if there are uncommitted changes).

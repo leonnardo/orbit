@@ -40,33 +40,31 @@ func List(args []string) error {
 		return fmt.Errorf("bare repo missing for project %q: %s", h.Config.Project, barePath)
 	}
 
-	entries, err := git.ListWorktrees(barePath)
+	entries, err := listRows(barePath, h.Root)
 	if err != nil {
 		return err
 	}
 
-	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
-	fmt.Print(formatList(h.Config.Project, h.Config.Remote, h.Root, entries, home, cwd))
+	fmt.Print(formatList(h.Root, entries, cwd))
 	return nil
 }
 
-// formatList renders the human-readable listing.
-//
-// Only worktrees strictly inside hubRoot are included; the bare entry and any
-// external worktrees of the same bare are skipped. Rows are sorted by name
-// (path relative to hubRoot) for deterministic output.
-//
-// If cwd is inside one of the listed worktrees, that row is prefixed with "*";
-// all other rows get a leading space. An empty cwd (or a cwd outside every
-// worktree) yields a leading space on every row.
-func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, home, cwd string) string {
+type listRow struct {
+	current                                        bool
+	branch, status, path, commit, message, absPath string
+}
+
+func listRows(barePath, hubRoot string) ([]listRow, error) {
+	entries, err := git.ListWorktrees(barePath)
+	if err != nil {
+		return nil, err
+	}
+
 	hubNorm := normalizePath(hubRoot)
 	hubPrefix := hubNorm + string(filepath.Separator)
 
-	type row struct{ name, branch, path, absPath string }
-	var rows []row
-	maxName, maxBranch := 0, 0
+	var rows []listRow
 	for _, e := range entries {
 		if e.Bare {
 			continue
@@ -83,64 +81,148 @@ func formatList(project, remote, hubRoot string, entries []git.WorktreeEntry, ho
 		if branch == "" || e.Detached {
 			branch = "(detached)"
 		}
-		rows = append(rows, row{
-			name:    rel,
+		status, err := worktreeSignals(e, eNorm)
+		if err != nil {
+			return nil, err
+		}
+		message, err := git.HeadMessage(barePath, e.HeadSha)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, listRow{
 			branch:  branch,
-			path:    renderPath(eNorm, home),
+			status:  status,
+			path:    rel,
+			commit:  e.ShortHead(),
+			message: message,
 			absPath: eNorm,
 		})
-		if len(rel) > maxName {
-			maxName = len(rel)
-		}
-		if len(branch) > maxBranch {
-			maxBranch = len(branch)
-		}
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })
+	sort.Slice(rows, func(i, j int) bool { return rows[i].path < rows[j].path })
+	return rows, nil
+}
 
-	const (
-		hdrName   = "WORKTREE"
-		hdrBranch = "BRANCH"
-		hdrPath   = "FOLDER"
-	)
-	if len(hdrName) > maxName {
-		maxName = len(hdrName)
+func worktreeSignals(e git.WorktreeEntry, path string) (string, error) {
+	st, err := git.Status(path)
+	if err != nil {
+		return "", err
 	}
-	if len(hdrBranch) > maxBranch {
-		maxBranch = len(hdrBranch)
+	return formatSignals(e, st), nil
+}
+
+func formatSignals(e git.WorktreeEntry, st git.WorktreeStatus) string {
+	var signals strings.Builder
+	if e.Locked {
+		signals.WriteString("🔒")
+	}
+	if e.Detached {
+		signals.WriteString("◆")
+	}
+	if st.Conflict {
+		signals.WriteString("!")
+	}
+	if st.Changed {
+		signals.WriteString("●")
+	}
+	if st.Untracked {
+		signals.WriteString("?")
+	}
+	if st.Ahead {
+		signals.WriteString("↑")
+	}
+	if st.Behind {
+		signals.WriteString("↓")
+	}
+	if signals.Len() == 0 {
+		return "✓"
+	}
+	return signals.String()
+}
+
+// formatList renders the human-readable listing.
+//
+// Rows are sorted before rendering by listRows. If cwd is inside one of the
+// listed worktrees, that row is marked with "*".
+func formatList(hubRoot string, rows []listRow, cwd string) string {
+	const (
+		hdrBranch = "BRANCH"
+		hdrStatus = "STATUS"
+		hdrPath   = "PATH"
+		hdrCommit = "COMMIT"
+		hdrMsg    = "MESSAGE"
+	)
+	maxBranch, maxStatus, maxPath, maxCommit := displayWidth(hdrBranch), displayWidth(hdrStatus), displayWidth(hdrPath), displayWidth(hdrCommit)
+	for _, r := range rows {
+		if displayWidth(r.branch) > maxBranch {
+			maxBranch = displayWidth(r.branch)
+		}
+		if displayWidth(r.status) > maxStatus {
+			maxStatus = displayWidth(r.status)
+		}
+		if displayWidth(r.path) > maxPath {
+			maxPath = displayWidth(r.path)
+		}
+		if displayWidth(r.commit) > maxCommit {
+			maxCommit = displayWidth(r.commit)
+		}
+	}
+
+	currentPath := ""
+	cwdNorm := normalizePath(cwd)
+	hubNorm := normalizePath(hubRoot)
+	if cwdNorm != "" && cwdNorm != hubNorm {
+		for i, r := range rows {
+			if isInside(cwdNorm, r.absPath) {
+				currentPath = r.path
+				rows[i].current = true
+				break
+			}
+		}
+	}
+	markerWidth := 0
+	if currentPath != "" {
+		markerWidth = 1
 	}
 
 	var b strings.Builder
-	if remote != "" {
-		fmt.Fprintf(&b, "%s  (%s)\n", project, remote)
-	} else {
-		fmt.Fprintf(&b, "%s\n", project)
-	}
 	if len(rows) == 0 {
-		b.WriteString("  (no worktrees yet — create one with `orbit new <branch>`)\n")
+		b.WriteString("(no worktrees yet — create one with `orbit new <branch>`)\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "  %-*s  %-*s  %s\n", maxName, hdrName, maxBranch, hdrBranch, hdrPath)
+	if markerWidth > 0 {
+		b.WriteString("  ")
+	}
+	fmt.Fprintf(&b, "%s  %s  %s  %s  %s\n", padRight(hdrBranch, maxBranch), padRight(hdrStatus, maxStatus), padRight(hdrPath, maxPath), padRight(hdrCommit, maxCommit), hdrMsg)
 	for _, r := range rows {
-		marker := " "
-		if cwd != "" && isInside(cwd, r.absPath) {
-			marker = "*"
+		if markerWidth > 0 {
+			marker := " "
+			if r.current {
+				marker = "*"
+			}
+			fmt.Fprintf(&b, "%s ", marker)
 		}
-		fmt.Fprintf(&b, "%s %-*s  %-*s  %s\n", marker, maxName, r.name, maxBranch, r.branch, r.path)
+		fmt.Fprintf(&b, "%s  %s  %s  %s  %s\n", padRight(r.branch, maxBranch), padRight(r.status, maxStatus), padRight(r.path, maxPath), padRight(r.commit, maxCommit), r.message)
 	}
 	return b.String()
 }
 
-// renderPath replaces a leading $HOME with ~ for display, otherwise returns p.
-func renderPath(p, home string) string {
-	if home == "" {
-		return p
+func padRight(s string, width int) string {
+	padding := width - displayWidth(s)
+	if padding <= 0 {
+		return s
 	}
-	if p == home {
-		return "~"
+	return s + strings.Repeat(" ", padding)
+}
+
+func displayWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		switch r {
+		case '🔒':
+			width += 2
+		default:
+			width++
+		}
 	}
-	if strings.HasPrefix(p, home+string(filepath.Separator)) {
-		return "~" + p[len(home):]
-	}
-	return p
+	return width
 }

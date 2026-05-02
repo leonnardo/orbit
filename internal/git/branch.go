@@ -77,6 +77,14 @@ func (e WorktreeEntry) BranchName() string {
 	return ""
 }
 
+// ShortHead returns the abbreviated HEAD SHA for display.
+func (e WorktreeEntry) ShortHead() string {
+	if len(e.HeadSha) <= 7 {
+		return e.HeadSha
+	}
+	return e.HeadSha[:7]
+}
+
 // ListWorktrees returns all worktrees registered with the bare repo at gitDir.
 func ListWorktrees(gitDir string) ([]WorktreeEntry, error) {
 	out, err := RunGitDir(gitDir, "worktree", "list", "--porcelain")
@@ -165,4 +173,76 @@ func HeadBranch(gitDir string) string {
 		return ""
 	}
 	return strings.TrimPrefix(strings.TrimSpace(out), "refs/heads/")
+}
+
+// HeadMessage returns the subject of the given commit.
+func HeadMessage(gitDir, sha string) (string, error) {
+	if strings.TrimSpace(sha) == "" {
+		return "", nil
+	}
+	return RunGitDir(gitDir, "log", "-1", "--format=%s", sha)
+}
+
+// WorktreeStatus summarizes the working tree state using porcelain v1 output.
+type WorktreeStatus struct {
+	Changed   bool
+	Untracked bool
+	Conflict  bool
+	Ahead     bool
+	Behind    bool
+}
+
+// Status returns a compact summary of the worktree's local changes.
+func Status(path string) (WorktreeStatus, error) {
+	out, err := RunInDir(path, "status", "--porcelain")
+	if err != nil {
+		return WorktreeStatus{}, err
+	}
+	st := ParseStatus(out)
+	ahead, behind, err := upstreamCounts(path)
+	if err == nil {
+		st.Ahead = ahead > 0
+		st.Behind = behind > 0
+	}
+	return st, nil
+}
+
+// ParseStatus summarizes `git status --porcelain` output.
+func ParseStatus(porcelain string) WorktreeStatus {
+	var st WorktreeStatus
+	for _, line := range strings.Split(porcelain, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "??") {
+			st.Untracked = true
+			continue
+		}
+		if len(line) >= 2 && (isUnmergedStatus(line[0:2])) {
+			st.Conflict = true
+			continue
+		}
+		st.Changed = true
+	}
+	return st
+}
+
+func isUnmergedStatus(s string) bool {
+	switch s {
+	case "DD", "AU", "UD", "UA", "DU", "AA", "UU":
+		return true
+	default:
+		return false
+	}
+}
+
+func upstreamCounts(path string) (ahead, behind int, err error) {
+	out, err := RunInDir(path, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := fmt.Sscanf(out, "%d\t%d", &ahead, &behind); err != nil {
+		return 0, 0, err
+	}
+	return ahead, behind, nil
 }

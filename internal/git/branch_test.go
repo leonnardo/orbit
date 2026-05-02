@@ -69,3 +69,37 @@ func TestWorktreeEntry_BranchName(t *testing.T) {
 		}
 	}
 }
+
+func TestWorktreeEntry_ShortHead(t *testing.T) {
+	cases := []struct {
+		sha, want string
+	}{
+		{"1111111111111111111111111111111111111111", "1111111"},
+		{"abc", "abc"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		got := WorktreeEntry{HeadSha: c.sha}.ShortHead()
+		if got != c.want {
+			t.Errorf("ShortHead(%q) = %q, want %q", c.sha, got, c.want)
+		}
+	}
+}
+
+func TestParseStatus(t *testing.T) {
+	got := ParseStatus(" M changed.go\nA  staged.go\n?? new.go\nUU conflicted.go\n")
+	if !got.Changed {
+		t.Errorf("expected changed status")
+	}
+	if !got.Untracked {
+		t.Errorf("expected untracked status")
+	}
+	if !got.Conflict {
+		t.Errorf("expected conflict status")
+	}
+
+	clean := ParseStatus("")
+	if clean.Changed || clean.Untracked || clean.Conflict {
+		t.Errorf("empty porcelain output should be clean, got %+v", clean)
+	}
+}
